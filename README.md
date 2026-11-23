@@ -117,6 +117,12 @@ TXD-Converter/
 - [ ] 🎮 Format khusus GPU (PVR / ETC)
 
 ---
+## 🛑Link video cara pakai app
+https://youtu.be/QouH8acI6-E?si=2m18RhHFNOWPMukW
+
+## ❣️Link download
+https://sfl.gl/yLlYEoAN
+
 
 <div align="center">
 

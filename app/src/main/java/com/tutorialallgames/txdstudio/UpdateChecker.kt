@@ -46,10 +46,10 @@ private val MU = Color(0xFF9AA3B2)
 
 private data class UpdateInfo(val code: Int, val name: String, val message: String, val url: String)
 
-private sealed interface Check {
-    data class Available(val info: UpdateInfo) : Check
-    data class UpToDate(val installed: Int, val server: Int) : Check
-    data class Failed(val reason: String) : Check
+private sealed interface CheckResult {
+    data class Available(val info: UpdateInfo, val installed: Int) : CheckResult
+    data class UpToDate(val installed: Int, val server: Int) : CheckResult
+    data class Failed(val reason: String) : CheckResult
 }
 
 @Suppress("DEPRECATION")
@@ -57,28 +57,28 @@ private fun installedCode(ctx: Context): Int =
     runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionCode }.getOrDefault(Int.MAX_VALUE)
 
 /** Dipanggil di thread latar. Selalu mengembalikan hasil, tidak pernah melempar error. */
-private fun check(ctx: Context): Check = try {
+private fun checkUpdate(ctx: Context): CheckResult = try {
     val c = URL(UPDATE_URL).openConnection() as HttpURLConnection
     c.connectTimeout = 6000
     c.readTimeout = 6000
     try {
         if (c.responseCode != 200) {
-            Check.Failed("Server menjawab kode ${c.responseCode}")
+            CheckResult.Failed("Server menjawab kode ${c.responseCode}")
         } else {
             val j = JSONObject(c.inputStream.bufferedReader().use { it.readText() })
             val u = UpdateInfo(j.getInt("versionCode"), j.optString("versionName"), j.optString("message"), j.optString("url"))
             val have = installedCode(ctx)
-            if (u.code > have) Check.Available(u) else Check.UpToDate(have, u.code)
+            if (u.code > have) CheckResult.Available(u, have) else CheckResult.UpToDate(have, u.code)
         }
     } finally {
         c.disconnect()
     }
 } catch (e: JSONException) {
-    Check.Failed("Isi update.json tidak valid")
+    CheckResult.Failed("Isi update.json tidak valid")
 } catch (e: IOException) {
-    Check.Failed("Tidak bisa terhubung ke GitHub (cek internet / jaringan)")
+    CheckResult.Failed("Tidak bisa terhubung ke GitHub (cek internet / jaringan)")
 } catch (e: Exception) {
-    Check.Failed("Terjadi kesalahan: ${e.javaClass.simpleName}")
+    CheckResult.Failed("Terjadi kesalahan: ${e.javaClass.simpleName}")
 }
 
 @Composable
@@ -107,8 +107,8 @@ fun UpdateDialog() {
     val ctx = LocalContext.current
     var info by remember { mutableStateOf<UpdateInfo?>(null) }
     LaunchedEffect(Unit) {
-        val r = withContext(Dispatchers.IO) { check(ctx) }
-        if (r is Check.Available) info = r.info
+        val r = withContext(Dispatchers.IO) { checkUpdate(ctx) }
+        if (r is CheckResult.Available) info = r.info
     }
     info?.let { UpdateInfoDialog(it) { info = null } }
 }
@@ -128,16 +128,17 @@ fun UpdateCheckRow() {
                 busy = true
                 status = null
                 scope.launch {
-                    val r = withContext(Dispatchers.IO) { check(ctx) }
+                    val r = withContext(Dispatchers.IO) { checkUpdate(ctx) }
                     busy = false
                     when (r) {
-                        is Check.Available -> {
+                        is CheckResult.Available -> {
                             info = r.info
-                            status = "Update tersedia (versi terpasang: ${r.info.code - 0 .coerceAtMost(0)})"
+                            status = "Update tersedia\n(kode terpasang ${r.installed} · kode di server ${r.info.code})"
                         }
-                        is Check.UpToDate -> status =
-                            "Sudah versi terbaru ✓\n(kode terpasang ${r.installed} · kode di server ${r.server})"
-                        is Check.Failed -> status = "Gagal memeriksa: ${r.reason}"
+                        is CheckResult.UpToDate ->
+                            status = "Sudah versi terbaru ✓\n(kode terpasang ${r.installed} · kode di server ${r.server})"
+                        is CheckResult.Failed ->
+                            status = "Gagal memeriksa: ${r.reason}"
                     }
                 }
             }

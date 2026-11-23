@@ -362,6 +362,7 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                             "Konversi PNG ke TXD khusus Android, dengan pilihan alpha per gambar.",
                             color = MU, textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp)
                         )
+                        UpdateCheckRow()
                     }
                     Column(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SF).padding(16.dp),

@@ -1,6 +1,7 @@
 package com.tutorialallgames.txdstudio
 
 import java.io.ByteArrayOutputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -20,33 +21,54 @@ object TxdWriter {
     private const val OPAQUE = -0x1000000 // 0xFF000000
     private val LE = ByteOrder.LITTLE_ENDIAN
 
-    private fun chunk(type: Int, body: ByteArray): ByteArray =
-        ByteBuffer.allocate(12 + body.size).order(LE)
-            .putInt(type).putInt(body.size).putInt(VER).put(body).array()
+    private fun head(type: Int, size: Int): ByteArray =
+        ByteBuffer.allocate(12).order(LE).putInt(type).putInt(size).putInt(VER).array()
 
-    fun build(list: List<Tex>): ByteArray {
-        require(list.isNotEmpty()) { "Tidak ada tekstur" }
-        val o = ByteArrayOutputStream()
-        o.write(chunk(0x01, byteArrayOf(list.size.toByte(), (list.size shr 8).toByte(), 0, 0)))
-        list.forEach { o.write(native(it)) }
-        o.write(chunk(0x03, ByteArray(0)))
-        return chunk(0x16, o.toByteArray())
-    }
+    private fun int4(v: Int): ByteArray = ByteBuffer.allocate(4).order(LE).putInt(v).array()
 
     private fun levelBytes(w: Int, h: Int, f: TexFormat): Int =
         if (f.block == 0) w * h * 4 else maxOf(1, (w + 3) / 4) * maxOf(1, (h + 3) / 4) * f.block
 
-    /** Perkiraan ukuran file satu tekstur tanpa meng-encode (murah, aman dipanggil di UI). */
-    fun estimateBytes(t: Tex): Int {
+    /** Isi chunk Struct satu tekstur: header native 88 byte + (4 byte ukuran + data) tiap level mip. */
+    private fun structBody(t: Tex): Int {
         val (w0, h0) = t.outDims()
         val f = t.fmt
-        var w = w0; var h = h0; var sum = 0
+        var w = w0; var h = h0; var sum = 88
         while (true) {
             sum += 4 + levelBytes(w, h, f)
             if (!t.mipmaps || (w == 1 && h == 1)) break
             w = maxOf(1, w / 2); h = maxOf(1, h / 2)
         }
-        return sum + 164 // header chunk + header native 88 byte
+        return sum
+    }
+
+    /** Isi chunk Texture Native = chunk Struct + chunk Extension kosong. */
+    private fun nativeBody(t: Tex): Int = 12 + structBody(t) + 12
+
+    /** Ukuran persis satu tekstur di dalam file (termasuk header chunk), tanpa meng-encode. Murah untuk UI. */
+    fun estimateBytes(t: Tex): Int = 12 + nativeBody(t)
+
+    /** Ukuran persis seluruh file TXD. */
+    fun totalBytes(list: List<Tex>): Int = 12 + (12 + 4) + list.sumOf { estimateBytes(it) } + 12
+
+    /**
+     * Menulis TXD langsung ke [out] satu tekstur demi satu, jadi memori puncak hanya sebesar
+     * satu tekstur (bukan seluruh file digandakan berkali-kali seperti penyusunan ByteArray bertumpuk).
+     */
+    fun write(list: List<Tex>, out: OutputStream) {
+        require(list.isNotEmpty()) { "Tidak ada tekstur" }
+        require(list.size <= 0xFFFF) { "Terlalu banyak tekstur" }
+        out.write(head(0x16, totalBytes(list) - 12))
+        out.write(head(0x01, 4))
+        out.write(byteArrayOf(list.size.toByte(), (list.size shr 8).toByte(), 0, 0))
+        for (t in list) writeNative(t, out)
+        out.write(head(0x03, 0))
+    }
+
+    fun build(list: List<Tex>): ByteArray {
+        val o = ByteArrayOutputStream(totalBytes(list))
+        write(list, o)
+        return o.toByteArray()
     }
 
     private fun name32(s: String): ByteArray {
@@ -54,7 +76,7 @@ object TxdWriter {
         System.arraycopy(n, 0, b, 0, minOf(31, n.size)); return b
     }
 
-    private fun native(t: Tex): ByteArray {
+    private fun writeNative(t: Tex, out: OutputStream) {
         val f = t.fmt
         val alpha = t.alpha
         val lv = mips(t)
@@ -82,12 +104,13 @@ object TxdWriter {
         hd.put((if (f.block == 0) 32 else 16).toByte())
         hd.put(lv.size.toByte()); hd.put(4.toByte())
         hd.put(((if (alpha) 1 else 0) or (if (f.block > 0) 8 else 0)).toByte())
-        val body = ByteArrayOutputStream()
-        body.write(hd.array())
-        for (l in lv) {
-            body.write(ByteBuffer.allocate(4).order(LE).putInt(l.size).array()); body.write(l)
-        }
-        return chunk(0x15, chunk(0x01, body.toByteArray()) + chunk(0x03, ByteArray(0)))
+        val sb = structBody(t)
+        check(sb == 88 + lv.sumOf { 4 + it.size }) { "Ukuran tekstur ${t.name} tidak cocok" }
+        out.write(head(0x15, nativeBody(t)))
+        out.write(head(0x01, sb))
+        out.write(hd.array())
+        for (l in lv) { out.write(int4(l.size)); out.write(l) }
+        out.write(head(0x03, 0))
     }
 
     private fun mips(t: Tex): List<ByteArray> {
@@ -109,15 +132,25 @@ object TxdWriter {
         return r
     }
 
+    /**
+     * Kecilkan 2x dengan rata-rata berbobot alpha (premultiplied). Tanpa ini, warna piksel yang
+     * hampir/sepenuhnya transparan (biasanya hitam) ikut tercampur dan membuat tepi mipmap gelap.
+     */
     private fun down(p: IntArray, w: Int, h: Int, nw: Int, nh: Int): IntArray {
         val o = IntArray(nw * nh)
         for (y in 0 until nh) for (x in 0 until nw) {
             var a = 0; var r = 0; var g = 0; var b = 0
+            var pr = 0; var pg = 0; var pb = 0
             for (dy in 0..1) for (dx in 0..1) {
                 val c = p[minOf(h - 1, y * 2 + dy) * w + minOf(w - 1, x * 2 + dx)]
-                a += c ushr 24; r += (c shr 16) and 255; g += (c shr 8) and 255; b += c and 255
+                val ca = c ushr 24; val cr = (c shr 16) and 255; val cg = (c shr 8) and 255; val cb = c and 255
+                a += ca; r += cr; g += cg; b += cb
+                pr += cr * ca; pg += cg * ca; pb += cb * ca
             }
-            o[y * nw + x] = ((a / 4) shl 24) or ((r / 4) shl 16) or ((g / 4) shl 8) or (b / 4)
+            val orr: Int; val og: Int; val ob: Int
+            if (a == 0) { orr = (r + 2) / 4; og = (g + 2) / 4; ob = (b + 2) / 4 } // transparan penuh: warna bebas
+            else { orr = (pr + a / 2) / a; og = (pg + a / 2) / a; ob = (pb + a / 2) / a }
+            o[y * nw + x] = (((a + 2) / 4) shl 24) or (orr shl 16) or (og shl 8) or ob
         }
         return o
     }

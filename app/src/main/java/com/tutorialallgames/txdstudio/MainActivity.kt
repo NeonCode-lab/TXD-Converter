@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -49,6 +50,8 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private val IMAGE_TYPES = arrayOf("image/png", "image/jpeg", "image/webp")
+
 /** Bulatkan ke pangkat dua terdekat ke atas, maksimal 2048. */
 private fun pot(n: Int): Int { var p = 1; while (p < n) p = p shl 1; return minOf(p, 2048) }
 
@@ -74,7 +77,14 @@ private fun thumbnail(bm: Bitmap): Bitmap {
 
 /** Dipanggil di thread latar. Mengembalikan null jika PNG gagal dibaca. */
 private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching {
-    val src = ctx.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it) }
+    // Baca ukuran dulu; gambar raksasa di-subsample supaya tidak kehabisan memori saat decode.
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    ctx.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, bounds) }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 4096) sample *= 2
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    val src = ctx.contentResolver.openInputStream(uri)!!.use { BitmapFactory.decodeStream(it, null, opts) }
         ?: return@runCatching null
     val w = pot(src.width); val h = pot(src.height)
     val bm = if (w == src.width && h == src.height) src else Bitmap.createScaledBitmap(src, w, h, true)
@@ -138,7 +148,7 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                 texs.addAll(ok)
                 busy = null
                 val fail = res.size - ok.size
-                if (fail > 0) toast("$fail gambar gagal dibaca (pastikan file PNG valid)")
+                if (fail > 0) toast("$fail gambar gagal dibaca (pastikan file gambar valid)")
                 if (texs.isNotEmpty()) screen = "editor"
             }
         }
@@ -148,17 +158,31 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
             val snapshot = texs.toList()
             busy = "Menyimpan TXD…"
             scope.launch {
-                val ok = withContext(Dispatchers.IO) {
-                    runCatching {
-                        ctx.contentResolver.openOutputStream(uri)!!.use { it.write(TxdWriter.build(snapshot)) }
-                    }.isSuccess
+                val err = withContext(Dispatchers.IO) {
+                    try {
+                        ctx.contentResolver.openOutputStream(uri)!!.buffered(1 shl 16)
+                            .use { TxdWriter.write(snapshot, it) }
+                        null
+                    } catch (t: Throwable) {
+                        // Jangan tinggalkan file TXD kosong/setengah jadi kalau gagal
+                        runCatching { DocumentsContract.deleteDocument(ctx.contentResolver, uri) }
+                        t
+                    }
                 }
                 busy = null
-                toast(if (ok) "TXD tersimpan" else "Gagal menyimpan")
+                toast(
+                    when (err) {
+                        null -> "TXD tersimpan"
+                        is OutOfMemoryError -> "Memori tidak cukup. Kurangi resolusi atau jumlah tekstur"
+                        else -> "Gagal menyimpan"
+                    }
+                )
             }
         }
     }
-    BackHandler(screen != "home" && busy == null) { screen = if (screen == "detail") "editor" else "home" }
+    BackHandler(screen != "home" || busy != null) {
+        if (busy == null) screen = if (screen == "detail") "editor" else "home"
+    }
 
     Box(Modifier.fillMaxSize().background(BG)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(20.dp)) {
@@ -184,7 +208,7 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                         )
                     }
                     Spacer(Modifier.height(20.dp))
-                    Btn("Impor PNG", true, Modifier.fillMaxWidth()) { picker.launch(arrayOf("image/png")) }
+                    Btn("Impor PNG", true, Modifier.fillMaxWidth()) { picker.launch(IMAGE_TYPES) }
                     Spacer(Modifier.height(12.dp))
                     Btn("Buka file TXD", false, Modifier.fillMaxWidth()) { toast("Pembaca TXD menyusul") }
                 }
@@ -209,7 +233,7 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                         }
                     }
                     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Btn("Tambah PNG", false, Modifier.weight(1f)) { picker.launch(arrayOf("image/png")) }
+                        Btn("Tambah PNG", false, Modifier.weight(1f)) { picker.launch(IMAGE_TYPES) }
                         Btn("Simpan TXD", true, Modifier.weight(1f)) {
                             val names = texs.map { it.name.lowercase() }
                             when {
@@ -224,7 +248,7 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
 
                 "detail" -> {
                     val t = texs.getOrNull(sel)
-                    if (t == null) { screen = "editor" } else {
+                    if (t == null) { LaunchedEffect(Unit) { screen = "editor" } } else {
                         val d = t.outDims()
                         val setAlpha = { on: Boolean ->
                             val f = when {
@@ -318,7 +342,7 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                     ) {
                         Text("TXD Studio", color = TX, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                        Text("Versi 1.1.0 · Android", color = MU, modifier = Modifier.padding(top = 6.dp))
+                        Text("Versi 1.1.1 · Android", color = MU, modifier = Modifier.padding(top = 6.dp))
                         Text(
                             "Konversi PNG ke TXD khusus Android, dengan pilihan alpha per gambar.",
                             color = MU, textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp)

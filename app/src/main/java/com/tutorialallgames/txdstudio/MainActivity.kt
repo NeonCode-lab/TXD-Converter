@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -116,6 +117,16 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
     val bm = remember(t.thumb) { t.thumb.asImageBitmap() }
     Image(bm, t.name, m.clip(RoundedCornerShape(8.dp)).background(Color(0xFF222630)), contentScale = ContentScale.Fit)
 }
+
+@Composable private fun Social(label: String, handle: String, onClick: () -> Unit) =
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(onClick = onClick)
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = MU, fontSize = 14.sp)
+        Text("$handle  ↗", color = AC, fontWeight = FontWeight.SemiBold)
+    }
 
 @Composable fun App() {
     val ctx = LocalContext.current
@@ -312,6 +323,10 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                 }
 
                 else -> {
+                    val uriHandler = LocalUriHandler.current
+                    val open = { url: String ->
+                        try { uriHandler.openUri(url) } catch (e: Exception) { toast("Tidak bisa membuka tautan") }
+                    }
                     Top("Tentang") { screen = "home" }
                     Column(
                         Modifier.weight(1f).fillMaxWidth(),
@@ -330,6 +345,10 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                     ) {
                         Text("Created By", color = MU, fontSize = 13.sp)
                         Text("Tutorial All Games", color = AC, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp), color = LN)
+                        Text("Ikuti di sosial media", color = MU, fontSize = 13.sp, modifier = Modifier.padding(bottom = 4.dp))
+                        Social("YouTube", "kri-sky09") { open("https://www.youtube.com/@kri-sky09") }
+                        Social("TikTok", "Neoncode") { open("https://www.tiktok.com/@neoncode") }
                     }
                 }
             }

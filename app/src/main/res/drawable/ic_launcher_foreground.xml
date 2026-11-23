@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- kartu gambar oranye -->
+    <path
+        android:fillColor="#FF8A3D"
+        android:pathData="M42,30 H66 A12,12 0 0 1 78,42 V66 A12,12 0 0 1 66,78 H42 A12,12 0 0 1 30,66 V42 A12,12 0 0 1 42,30 Z" />
+    <!-- gunung -->
+    <path
+        android:fillColor="#1A0E05"
+        android:pathData="M36,70 L47,54 L55,64 L61,57 L72,70 Z" />
+    <!-- matahari -->
+    <path
+        android:fillColor="#1A0E05"
+        android:pathData="M59,42 A5,5 0 1 1 69,42 A5,5 0 1 1 59,42 Z" />
+    <!-- lencana kotak-kotak (alpha) -->
+    <path
+        android:fillColor="#0F1115"
+        android:pathData="M59,56 H75 A3,3 0 0 1 78,59 V75 A3,3 0 0 1 75,78 H59 A3,3 0 0 1 56,75 V59 A3,3 0 0 1 59,56 Z" />
+    <path
+        android:fillColor="#E8EAF0"
+        android:pathData="M59,59 H67 V67 H59 Z M67,67 H75 V75 H67 Z" />
+    <path
+        android:fillColor="#9AA3B2"
+        android:pathData="M67,59 H75 V67 H67 Z M59,67 H67 V75 H59 Z" />
+</vector>

@@ -11,6 +11,9 @@
 
 **Created with ♡ by Tutorial All Games**
 
+[![YouTube](https://img.shields.io/badge/YouTube-kri--sky09-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/@kri-sky09)
+[![TikTok](https://img.shields.io/badge/TikTok-Neoncode-000000?style=for-the-badge&logo=tiktok&logoColor=white)](https://www.tiktok.com/@neoncode)
+
 </div>
 
 ---
@@ -91,6 +94,7 @@ TXD-Converter/
 ├── 📁 .github/workflows/build.yml   ← build APK otomatis
 └── 📁 app/src/main/
     ├── 📄 AndroidManifest.xml
+    ├── 📁 res/                     ← ikon aplikasi
     └── 📁 java/com/tutorialallgames/txdstudio/
         ├── 📄 MainActivity.kt       ← tampilan & alur aplikasi
         ├── 📄 Tex.kt                ← model tekstur & format
@@ -113,16 +117,12 @@ TXD-Converter/
 - [ ] 🎮 Format khusus GPU (PVR / ETC)
 
 ---
-## 🛑Link video cara pakai app
-https://youtu.be/QouH8acI6-E?si=2m18RhHFNOWPMukW
-
-## ❣️Link download
-https://sfl.gl/yLlYEoAN
-
 
 <div align="center">
 
 **Dibuat dengan ♡ oleh Tutorial All Games**
+
+📺 YouTube: [kri-sky09](https://www.youtube.com/@kri-sky09) &nbsp;·&nbsp; 🎵 TikTok: [Neoncode](https://www.tiktok.com/@neoncode)
 
 ⭐ Kalau suka, kasih bintang ya! ⭐
 

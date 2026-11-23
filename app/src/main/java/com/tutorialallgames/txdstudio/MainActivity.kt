@@ -46,7 +46,7 @@ private val ON_AC = Color(0xFF1A0E05)
 class MainActivity : ComponentActivity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s); enableEdgeToEdge()
-        setContent { MaterialTheme(colorScheme = darkColorScheme()) { App() } }
+        setContent { MaterialTheme(colorScheme = darkColorScheme()) { App(); UpdateDialog() } }
     }
 }
 

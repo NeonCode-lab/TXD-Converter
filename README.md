@@ -20,7 +20,7 @@
 
 ## 🌸 Tentang
 
-**TXD Studio** adalah aplikasi Android ringan untuk mengonversi gambar **PNG** menjadi tekstur **TXD**.
+**TXD Studio** adalah aplikasi Android ringan untuk mengonversi gambar **PNG** menjadi tekstur **TXD**, dan membaca isi file TXD.
 Semua diatur per gambar, langsung di layar HP, tanpa perlu PC.
 
 ---
@@ -38,6 +38,8 @@ Semua diatur per gambar, langsung di layar HP, tanpa perlu PC.
 | 🏷️ | **Nama otomatis unik** | Nama kembar dicegah dan diberi peringatan |
 | ⚡ | **Proses di latar** | Impor dan simpan tidak membuat layar macet |
 | 📦 | **Estimasi ukuran** | Perkiraan KB tampil di layar pengaturan |
+| 📖 | **Pembaca TXD** | Buka file `.txd`, lihat daftar tekstur, pratinjau, dan info format |
+| 🔔 | **Notifikasi update** | Muncul otomatis saat ada versi baru, tinggal ketuk *Perbarui* |
 
 ---
 
@@ -62,6 +64,12 @@ Tinggal **centang** atau **kosongkan** kotak *"Dengan alpha"* di pengaturan tiap
 4. 💾 Ketuk **Simpan TXD**, lalu pilih lokasi penyimpanan
 5. 🎉 Selesai!
 
+### 📖 Membaca file TXD
+
+1. Di layar utama ketuk **Buka file TXD**, lalu pilih file `.txd`
+2. Semua tekstur tampil sebagai kartu dengan pratinjau
+3. Ketuk satu tekstur untuk melihat pratinjau besar, ukuran, format, alpha, mipmap, dan ukuran data
+
 ---
 
 ## 🔧 Build APK
@@ -85,6 +93,25 @@ Tinggal **centang** atau **kosongkan** kotak *"Dengan alpha"* di pengaturan tiap
 
 </details>
 
+<details>
+<summary><b>🔔 Merilis update ke pengguna</b></summary>
+
+1. Naikkan `versionCode` dan `versionName` di `app/build.gradle.kts`
+2. Build APK, unggah, lalu ambil tautan unduhannya
+3. Di `update.json` (cabang `main`), naikkan `versionCode`/`versionName`, isi `message` dan `url`
+4. Pengguna yang membuka aplikasi akan melihat dialog *Update tersedia*
+
+> ⚠️ Agar update bisa menimpa versi lama, setiap APK harus ditandatangani dengan kunci yang sama. Lihat bagian *Tanda tangan APK* di bawah.
+
+</details>
+
+<details>
+<summary><b>🔑 Tanda tangan APK yang stabil</b></summary>
+
+Secara bawaan GitHub Actions membuat kunci debug baru di tiap build, sehingga APK berikutnya tidak bisa menimpa APK lama. Supaya stabil, gunakan satu keystore yang sama di setiap build. `app/build.gradle.kts` sudah siap membaca keystore dari environment variable `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, dan `KEY_PASSWORD`. Kalau variabel itu tidak ada, build tetap jalan memakai kunci debug bawaan.
+
+</details>
+
 ---
 
 ## 🗂️ Struktur proyek
@@ -92,13 +119,17 @@ Tinggal **centang** atau **kosongkan** kotak *"Dengan alpha"* di pengaturan tiap
 ```
 TXD-Converter/
 ├── 📁 .github/workflows/build.yml   ← build APK otomatis
+├── 📄 update.json                  ← info versi terbaru untuk notifikasi update
 └── 📁 app/src/main/
     ├── 📄 AndroidManifest.xml
     ├── 📁 res/                     ← ikon aplikasi
     └── 📁 java/com/tutorialallgames/txdstudio/
         ├── 📄 MainActivity.kt       ← tampilan & alur aplikasi
         ├── 📄 Tex.kt                ← model tekstur & format
-        └── 📄 TxdWriter.kt          ← penulis file TXD
+        ├── 📄 TxdWriter.kt          ← penulis file TXD
+        ├── 📄 TxdReader.kt          ← pembaca file TXD
+        ├── 📄 TxdViewer.kt          ← layar daftar & detail hasil baca TXD
+        └── 📄 UpdateChecker.kt      ← notifikasi & cek update
 ```
 
 ---
@@ -113,8 +144,9 @@ TXD-Converter/
 
 ## 🚧 Belum tersedia
 
-- [ ] 📖 Pembaca file TXD (tombol *Buka file TXD* masih placeholder)
-- [ ] 🎮 Format khusus GPU (PVR / ETC)
+- [ ] 🎮 Format khusus GPU (PVR / ETC), baik untuk menulis maupun membaca
+- [ ] 🎨 Membaca TXD berpalet (8/4-bit) dan cubemap
+- [ ] ✏️ Mengedit TXD yang dibuka (saat ini hanya dibaca)
 
 ---
 ## 🛑Link video cara pakai app

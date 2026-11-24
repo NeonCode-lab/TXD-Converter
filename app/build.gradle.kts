@@ -10,6 +10,25 @@ android {
         applicationId = "com.tutorialallgames.txdstudio"
         minSdk = 24; targetSdk = 35; versionCode = 4; versionName = "1.2.0"
     }
+
+    // Tanda tangan stabil: dipakai hanya kalau CI menyediakan keystore lewat environment variable
+    // (KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD). Tanpa itu, build memakai
+    // kunci debug bawaan seperti biasa.
+    val keystorePath: String? = System.getenv("KEYSTORE_FILE")
+    if (keystorePath != null && File(keystorePath).exists()) {
+        signingConfigs {
+            create("stable") {
+                storeFile = File(keystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
+        buildTypes {
+            getByName("debug") { signingConfig = signingConfigs.getByName("stable") }
+        }
+    }
+
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }

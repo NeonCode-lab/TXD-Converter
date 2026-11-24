@@ -225,6 +225,60 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
             }
         }
     }
+    // Editor: satu ZIP berisi dua TXD (with_alpha dan without_alpha)
+    val zipSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) {
+            val snapshot = texs.toList()
+            busy = "Menyimpan ZIP…"
+            scope.launch {
+                val err = withContext(Dispatchers.IO) {
+                    try {
+                        ctx.contentResolver.openOutputStream(uri)!!.buffered(1 shl 16)
+                            .use { ZipExport.writeTxdZip(snapshot, it) }
+                        null
+                    } catch (t: Throwable) {
+                        runCatching { DocumentsContract.deleteDocument(ctx.contentResolver, uri) }
+                        t
+                    }
+                }
+                busy = null
+                toast(
+                    when (err) {
+                        null -> "ZIP tersimpan (with alpha + without alpha)"
+                        is OutOfMemoryError -> "Memori tidak cukup. Kurangi resolusi atau jumlah tekstur"
+                        else -> "Gagal menyimpan ZIP"
+                    }
+                )
+            }
+        }
+    }
+    // Pembaca TXD: satu ZIP berisi PNG tiap tekstur (with_alpha dan without_alpha)
+    val pngZipSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val f = txd
+        if (uri != null && f != null) {
+            busy = "Mengekspor PNG…"
+            scope.launch {
+                val res = withContext(Dispatchers.IO) {
+                    runCatching {
+                        ctx.contentResolver.openOutputStream(uri)!!.buffered(1 shl 16)
+                            .use { ZipExport.writePngZip(f, it) }
+                    }.onFailure { runCatching { DocumentsContract.deleteDocument(ctx.contentResolver, uri) } }
+                }
+                busy = null
+                res.onSuccess { (ok, skip) ->
+                    toast(if (skip > 0) "$ok tekstur diekspor, $skip dilewati" else "$ok tekstur diekspor")
+                }.onFailure { t ->
+                    toast(
+                        when (t) {
+                            is TxdFormatException -> t.message ?: "Gagal mengekspor"
+                            is OutOfMemoryError -> "Memori tidak cukup untuk mengekspor file ini"
+                            else -> "Gagal mengekspor"
+                        }
+                    )
+                }
+            }
+        }
+    }
     BackHandler(screen != "home" || busy != null) {
         if (busy == null) screen = when (screen) {
             "detail" -> "editor"
@@ -291,6 +345,15 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                                 names.size != names.toSet().size -> toast("Ada nama tekstur yang kembar")
                                 else -> saver.launch("textures.txd")
                             }
+                        }
+                    }
+                    Btn("Simpan ZIP (with alpha + without alpha)", false, Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                        val names = texs.map { it.name.lowercase() }
+                        when {
+                            texs.isEmpty() -> toast("Belum ada tekstur")
+                            names.any { it.isBlank() } -> toast("Ada nama tekstur yang kosong")
+                            names.size != names.toSet().size -> toast("Ada nama tekstur yang kembar")
+                            else -> zipSaver.launch("textures.zip")
                         }
                     }
                 }
@@ -389,6 +452,9 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                     if (f == null) { LaunchedEffect(Unit) { screen = "home" } } else {
                         TxdListScreen("$txdName · ${f.entries.size} tekstur", f, { screen = "home" }) { i ->
                             txdSel = i; screen = "txdDetail"
+                        }
+                        Btn("Ekspor ZIP (PNG with alpha + without alpha)", false, Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                            pngZipSaver.launch("textures_png.zip")
                         }
                     }
                 }

@@ -47,9 +47,8 @@ private val ON_AC = Color(0xFF1A0E05)
 class MainActivity : ComponentActivity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s); enableEdgeToEdge()
-        // Notifikasi update otomatis (UpdateDialog) dimatikan dulu karena tesnya sudah berhasil.
-        // Untuk menyalakan lagi: tambahkan kembali UpdateDialog() setelah App().
-        setContent { MaterialTheme(colorScheme = darkColorScheme()) { App() } }
+        // UpdateDialog = notifikasi update otomatis (baca update.json di cabang main saat aplikasi dibuka).
+        setContent { MaterialTheme(colorScheme = darkColorScheme()) { App(); UpdateDialog() } }
     }
 }
 
@@ -77,6 +76,11 @@ private fun thumbnail(bm: Bitmap): Bitmap {
     return if (s >= 1f) bm.copy(Bitmap.Config.ARGB_8888, false)
     else Bitmap.createScaledBitmap(bm, maxOf(1, (bm.width * s).toInt()), maxOf(1, (bm.height * s).toInt()), true)
 }
+
+/** Nama file yang tampil untuk [uri]; cadangan "file.txd" kalau tidak ketemu. */
+private fun displayName(ctx: Context, uri: Uri): String =
+    ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "file.txd"
 
 /** Dipanggil di thread latar. Mengembalikan null jika PNG gagal dibaca. */
 private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching {
@@ -147,6 +151,9 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
     var sel by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<String?>(null) }
     val texs = remember { mutableStateListOf<Tex>() }
+    var txd by remember { mutableStateOf<TxdFile?>(null) }
+    var txdName by remember { mutableStateOf("") }
+    var txdSel by remember { mutableIntStateOf(0) }
     val toast = { m: String -> Toast.makeText(ctx, m, Toast.LENGTH_SHORT).show() }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { us ->
@@ -163,6 +170,31 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                 val fail = res.size - ok.size
                 if (fail > 0) toast("$fail gambar gagal dibaca (pastikan file gambar valid)")
                 if (texs.isNotEmpty()) screen = "editor"
+            }
+        }
+    }
+    val txdPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            busy = "Membaca TXD…"
+            scope.launch {
+                val res = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val bytes = ctx.contentResolver.openInputStream(uri)!!.use { TxdReader.readBytes(it) }
+                        Pair(TxdReader.parse(bytes), displayName(ctx, uri))
+                    }
+                }
+                busy = null
+                res.onSuccess { (f, nm) ->
+                    txd = f; txdName = nm; txdSel = 0; screen = "txd"
+                }.onFailure { t ->
+                    toast(
+                        when (t) {
+                            is TxdFormatException -> t.message ?: "File TXD tidak valid"
+                            is OutOfMemoryError -> "Memori tidak cukup untuk membuka file ini"
+                            else -> "Gagal membaca file"
+                        }
+                    )
+                }
             }
         }
     }
@@ -194,7 +226,11 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
         }
     }
     BackHandler(screen != "home" || busy != null) {
-        if (busy == null) screen = if (screen == "detail") "editor" else "home"
+        if (busy == null) screen = when (screen) {
+            "detail" -> "editor"
+            "txdDetail" -> "txd"
+            else -> "home"
+        }
     }
 
     Box(Modifier.fillMaxSize().background(BG)) {
@@ -223,7 +259,7 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                     Spacer(Modifier.height(20.dp))
                     Btn("Impor PNG", true, Modifier.fillMaxWidth()) { picker.launch(IMAGE_TYPES) }
                     Spacer(Modifier.height(12.dp))
-                    Btn("Buka file TXD", false, Modifier.fillMaxWidth()) { toast("Pembaca TXD menyusul") }
+                    Btn("Buka file TXD", false, Modifier.fillMaxWidth()) { txdPicker.launch(arrayOf("*/*")) }
                 }
 
                 "editor" -> {
@@ -348,6 +384,23 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                     }
                 }
 
+                "txd" -> {
+                    val f = txd
+                    if (f == null) { LaunchedEffect(Unit) { screen = "home" } } else {
+                        TxdListScreen("$txdName · ${f.entries.size} tekstur", f, { screen = "home" }) { i ->
+                            txdSel = i; screen = "txdDetail"
+                        }
+                    }
+                }
+
+                "txdDetail" -> {
+                    val f = txd
+                    val e = f?.entries?.getOrNull(txdSel)
+                    if (f == null || e == null) { LaunchedEffect(Unit) { screen = "txd" } } else {
+                        TxdDetailScreen(f, e) { screen = "txd" }
+                    }
+                }
+
                 else -> {
                     val uriHandler = LocalUriHandler.current
                     val open = { url: String ->
@@ -359,9 +412,9 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
                     ) {
                         Text("TXD Studio", color = TX, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                        Text("Versi 1.1.1 · Android", color = MU, modifier = Modifier.padding(top = 6.dp))
+                        Text("Versi 1.2.0 · Android", color = MU, modifier = Modifier.padding(top = 6.dp))
                         Text(
-                            "Konversi PNG ke TXD khusus Android, dengan pilihan alpha per gambar.",
+                            "Konversi PNG ke TXD khusus Android, dengan pilihan alpha per gambar. Bisa juga membaca isi file TXD.",
                             color = MU, textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp)
                         )
                         UpdateCheckRow()

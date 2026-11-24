@@ -9,7 +9,19 @@ jobs:
         with: { distribution: temurin, java-version: 17 }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: 8.9 }
+
       - name: Siapkan keystore (opsional)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "Keystore stabil dipakai"
+          else
+            echo "Secret KEYSTORE_BASE64 kosong: pakai kunci debug bawaan"
+          fi
+
       - name: Diagnosa keystore
         if: env.KEYSTORE_FILE != ''
         env:
@@ -21,21 +33,16 @@ jobs:
           echo "Panjang KEY_PASSWORD: ${#KEY_PASSWORD}"
           [ "$KEYSTORE_PASSWORD" = "$KEY_PASSWORD" ] && echo "Dua password SAMA" || echo "Dua password BEDA"
           keytool -list -v -keystore "$KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" | grep -E "Keystore type|SHA256"
-          keytool -importkeystore -srckeystore "$KEYSTORE_FILE" -srcstorepass "$KEYSTORE_PASSWORD" -srcalias "$KEY_ALIAS" -srckeypass "$KEY_PASSWORD" -destkeystore "$RUNNER_TEMP/tes.p12" -deststoretype pkcs12 -deststorepass tes123456 -noprompt && echo "KUNCI BISA DIBUKA"
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
-            echo "Keystore stabil dipakai"
-          else
-            echo "Secret KEYSTORE_BASE64 kosong: pakai kunci debug bawaan"
-          fi
+          keytool -importkeystore -srckeystore "$KEYSTORE_FILE" -srcstorepass "$KEYSTORE_PASSWORD" \
+            -srcalias "$KEY_ALIAS" -srckeypass "$KEY_PASSWORD" \
+            -destkeystore "$RUNNER_TEMP/tes.p12" -deststoretype pkcs12 -deststorepass tes123456 -noprompt \
+            && echo "KUNCI BISA DIBUKA"
+
       - run: gradle assembleDebug --no-daemon
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
       - uses: actions/upload-artifact@v4
         with: { name: TXD-Studio-debug, path: app/build/outputs/apk/debug/app-debug.apk }

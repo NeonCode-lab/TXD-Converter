@@ -225,6 +225,60 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
             }
         }
     }
+    // Editor: satu ZIP berisi dua TXD (with_alpha dan without_alpha)
+    val zipSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) {
+            val snapshot = texs.toList()
+            busy = "Menyimpan ZIP…"
+            scope.launch {
+                val err = withContext(Dispatchers.IO) {
+                    try {
+                        ctx.contentResolver.openOutputStream(uri)!!.buffered(1 shl 16)
+                            .use { ZipExport.writeTxdZip(snapshot, it) }
+                        null
+                    } catch (t: Throwable) {
+                        runCatching { DocumentsContract.deleteDocument(ctx.contentResolver, uri) }
+                        t
+                    }
+                }
+                busy = null
+                toast(
+                    when (err) {
+                        null -> "ZIP tersimpan (with alpha + without alpha)"
+                        is OutOfMemoryError -> "Memori tidak cukup. Kurangi resolusi atau jumlah tekstur"
+                        else -> "Gagal menyimpan ZIP"
+                    }
+                )
+            }
+        }
+    }
+    // Pembaca TXD: satu ZIP berisi PNG tiap tekstur, disortir otomatis ke with_alpha / without_alpha
+    val pngZipSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val f = txd
+        if (uri != null && f != null) {
+            busy = "Mengekspor PNG…"
+            scope.launch {
+                val res = withContext(Dispatchers.IO) {
+                    runCatching {
+                        ctx.contentResolver.openOutputStream(uri)!!.buffered(1 shl 16)
+                            .use { ZipExport.writePngZip(f, it) }
+                    }.onFailure { runCatching { DocumentsContract.deleteDocument(ctx.contentResolver, uri) } }
+                }
+                busy = null
+                res.onSuccess { (ok, skip) ->
+                    toast(if (skip > 0) "$ok tekstur diekspor, $skip dilewati" else "$ok tekstur diekspor")
+                }.onFailure { t ->
+                    toast(
+                        when (t) {
+                            is TxdFormatException -> t.message ?: "Gagal mengekspor"
+                            is OutOfMemoryError -> "Memori tidak cukup untuk mengekspor file ini"
+                            else -> "Gagal mengekspor"
+                        }
+                    )
+                }
+            }
+        }
+    }
     BackHandler(screen != "home" || busy != null) {
         if (busy == null) screen = when (screen) {
             "detail" -> "editor"
@@ -240,7 +294,7 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
                             Text("TXD Studio", color = TX, fontSize = 30.sp, fontWeight = FontWeight.Bold)
-                            Text("Konversi PNG ke TXD · Android", color = MU, fontSize = 14.sp)
+                            Text("Konversi, baca & ekspor TXD · Android", color = MU, fontSize = 14.sp)
                         }
                         TextButton({ screen = "about" }) { Text("Tentang", color = AC) }
                     }
@@ -252,7 +306,8 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                         Text("Khusus Android", color = AC, fontWeight = FontWeight.Bold)
                         Text(
                             "Format: DXT1, DXT3, DXT5, dan 8888, dengan atau tanpa alpha. " +
-                                "Atur per gambar setelah impor.",
+                                "Atur per gambar setelah impor. Buka file TXD untuk melihat isinya " +
+                                "dan ekspor ke ZIP (PNG disortir with alpha / without alpha).",
                             color = MU, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)
                         )
                     }
@@ -291,6 +346,15 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                                 names.size != names.toSet().size -> toast("Ada nama tekstur yang kembar")
                                 else -> saver.launch("textures.txd")
                             }
+                        }
+                    }
+                    Btn("Simpan ZIP (with alpha + without alpha)", false, Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                        val names = texs.map { it.name.lowercase() }
+                        when {
+                            texs.isEmpty() -> toast("Belum ada tekstur")
+                            names.any { it.isBlank() } -> toast("Ada nama tekstur yang kosong")
+                            names.size != names.toSet().size -> toast("Ada nama tekstur yang kembar")
+                            else -> zipSaver.launch("textures.zip")
                         }
                     }
                 }
@@ -390,6 +454,9 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                         TxdListScreen("$txdName · ${f.entries.size} tekstur", f, { screen = "home" }) { i ->
                             txdSel = i; screen = "txdDetail"
                         }
+                        Btn("Ekspor ZIP (PNG with alpha + without alpha)", false, Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                            pngZipSaver.launch("textures_png.zip")
+                        }
                     }
                 }
 
@@ -414,7 +481,8 @@ private fun load(ctx: Context, uri: Uri, taken: Set<String>): Tex? = runCatching
                         Text("TXD Studio", color = TX, fontSize = 26.sp, fontWeight = FontWeight.Bold)
                         Text("Versi 1.2.0 · Android", color = MU, modifier = Modifier.padding(top = 6.dp))
                         Text(
-                            "Konversi PNG ke TXD khusus Android, dengan pilihan alpha per gambar. Bisa juga membaca isi file TXD.",
+                            "Konversi PNG ke TXD, baca isi file TXD, dan ekspor ke ZIP (PNG disortir " +
+                                "otomatis ke with alpha / without alpha). Khusus Android.",
                             color = MU, textAlign = TextAlign.Center, modifier = Modifier.padding(24.dp)
                         )
                         UpdateCheckRow()

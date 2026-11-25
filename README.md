@@ -167,7 +167,7 @@ TXD-Converter/
 
 ---
 ## 🛑Link video cara pakai app
-https://youtu.be/QouH8acI6-E?si=2m18RhHFNOWPMukW
+https://youtube.com/shorts/g8K2lDD75SQ?si=N7RGH0Wo9DYhzKpb
 
 ## ❣️Link download
 https://sfl.gl/cbVHx
